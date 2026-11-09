@@ -1,0 +1,245 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="referrer" content="no-referrer">
+  <title>Weather Ticker</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      background: transparent;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", "PingFang HK", sans-serif;
+      display: flex;
+      align-items: center;
+    }
+
+    /* 鎖死高 55px、寬 3240px 滿版 */
+    .bar {
+      width: 3240px;
+      height: 55px;
+      line-height: 55px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.75);
+      font-size: 32px;
+      font-weight: 700;
+      white-space: nowrap;
+      color: #FFFFFF !important; /* 確保全局文字預設為純白色 */
+    }
+
+    /* 跳秒即時時間（醒目亮綠色） */
+    .time {
+      color: #38ef7d !important;
+      font-size: 34px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      margin-right: 14px;
+    }
+
+    /* 年月日星期（純白） */
+    .date {
+      color: #FFFFFF !important;
+      margin-right: 16px;
+      font-weight: 600;
+    }
+
+    /* 關鍵修復：溫濕度強制鎖死為高亮純白色 */
+    .weather-item {
+      display: inline-flex;
+      align-items: center;
+      color: #FFFFFF !important;
+      margin-right: 14px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .weather-item span {
+      color: #FFFFFF !important;
+    }
+
+    /* 一般天氣圖示（44px，垂直居中） */
+    .weather-icon {
+      width: 44px;
+      height: 44px;
+      vertical-align: middle;
+      margin-left: 4px;
+      object-fit: contain;
+    }
+
+    /* 警告圖示容器（雙警告並排） */
+    .warning-container {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 6px;
+    }
+
+    .warning-icon {
+      width: 44px;
+      height: 44px;
+      vertical-align: middle;
+      object-fit: contain;
+      filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.4));
+    }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <span id="time" class="time">--:--:--</span>
+    <span id="date" class="date">----年--月--日 (--)</span>
+    <span class="weather-item"><span id="temp">--</span>&#176;C</span>
+    <span class="weather-item"><span id="humidity">--</span>%</span>
+    
+    <span class="weather-item">
+      <img id="icon" class="weather-icon" src="" style="display:none;" />
+    </span>
+
+    <span id="warning-container" class="warning-container"></span>
+  </div>
+
+  <script>
+    const FALLBACK_ICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='26' cy='26' r='12' fill='%23FFA500'/%3E%3Cpath d='M46 44a10 10 0 0 0-1.8-19.8 14 14 0 0 0-26.4 5.8A9 9 0 0 0 18 44h28z' fill='%23FFFFFF' opacity='0.9'/%3E%3C/svg%3E";
+
+    function updateClock() {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      document.getElementById('time').innerText = h + ':' + m + ':' + s;
+
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+      const day = now.getDate();
+      const dayArr = ['\u65e5', '\u4e00', '\u4e8c', '\u4e09', '\u56db', '\u4e94', '\u516d'];
+      document.getElementById('date').innerText = year + '\u5e74' + month + '\u6708' + day + '\u65e5 (' + dayArr[now.getDay()] + ')';
+    }
+
+    let weatherSuccess = false;
+
+    async function fetchWeather() {
+      try {
+        const timestamp = Date.now();
+        const res = await fetch('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=tc&_t=' + timestamp, {
+          cache: 'no-store'
+        });
+        if (!res.ok) throw new Error('Weather API error');
+        const data = await res.json();
+
+        if (data.temperature && data.temperature.data && data.temperature.data.length > 0) {
+          const hko = data.temperature.data.find(d => d.place === '\u9999\u6e2f\u5929\u6587\u53f0') || data.temperature.data[0];
+          document.getElementById('temp').innerText = hko.value;
+        }
+
+        if (data.humidity && data.humidity.data && data.humidity.data.length > 0) {
+          document.getElementById('humidity').innerText = data.humidity.data[0].value;
+        }
+
+        const img = document.getElementById('icon');
+        if (data.icon && Array.isArray(data.icon) && data.icon.length > 0) {
+          const iconId = data.icon[0];
+          img.onerror = function() {
+            this.onerror = null;
+            this.src = FALLBACK_ICON;
+          };
+          img.src = './pic' + iconId + '.png';
+          img.style.display = 'inline-block';
+        }
+
+        weatherSuccess = true;
+      } catch (e) {
+        if (!weatherSuccess) setTimeout(fetchWeather, 3000);
+      }
+    }
+
+    async function fetchWarnings() {
+      try {
+        const timestamp = Date.now();
+        const res = await fetch('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=tc&_t=' + timestamp, {
+          cache: 'no-store'
+        });
+        if (!res.ok) throw new Error('Warning API error');
+        const warnData = await res.json();
+        const container = document.getElementById('warning-container');
+        if (!container) return;
+
+        container.innerHTML = '';
+        if (!warnData || Object.keys(warnData).length === 0) return;
+
+        const warningFiles = [];
+
+        // 1. 強烈季候風信號 (WMSGNL)
+        if (warnData.WMSGNL || warnData.WMS || warnData.SMS || warnData.WTMW) {
+          warningFiles.push('sms.png');
+        }
+
+        // 2. 火災危險警告 (WFIRE)
+        if (warnData.WFIRE) {
+          const fireCode = (warnData.WFIRE.code || '').toUpperCase();
+          if (fireCode === 'WFIRER') warningFiles.push('firer.png');
+          else warningFiles.push('firey.png');
+        }
+
+        // 3. 熱帶氣旋警告
+        if (warnData.WTCSGNL) {
+          const tcCode = (warnData.WTCSGNL.code || '').toLowerCase();
+          if (tcCode) warningFiles.push(tcCode + '.png');
+        }
+
+        // 4. 暴雨警告
+        if (warnData.WRAIN) {
+          const rainCode = (warnData.WRAIN.code || '').toUpperCase();
+          if (rainCode === 'WRAINB') warningFiles.push('rainb.png');
+          else if (rainCode === 'WRAINR') warningFiles.push('rainr.png');
+          else warningFiles.push('raina.png');
+        }
+
+        // 5. 雷暴警告
+        if (warnData.WTHDR) warningFiles.push('ts.png');
+
+        // 6. 酷熱 / 寒冷
+        if (warnData.VHOT) warningFiles.push('vhot.png');
+        if (warnData.COLD) warningFiles.push('cold.png');
+
+        // 7. 霜凍警告
+        if (warnData.WFROST) warningFiles.push('frost.png');
+
+        // 8. 山泥傾瀉警告
+        if (warnData.WLANDSLIP) warningFiles.push('landslip.png');
+
+        // 9. 新界北部水浸特別報告
+        if (warnData.WFNTSA) warningFiles.push('ntfl.png');
+
+        // 10. 海嘯警告
+        if (warnData.WTSUNAMI) warningFiles.push('tsunami-warn.png');
+
+        const uniqueFiles = [...new Set(warningFiles)];
+        uniqueFiles.forEach(fileName => {
+          const img = document.createElement('img');
+          img.className = 'warning-icon';
+          img.src = './' + fileName;
+          img.onerror = function() { this.style.display = 'none'; };
+          container.appendChild(img);
+        });
+
+      } catch (e) {
+        console.warn('Warning fetch error:', e);
+      }
+    }
+
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    fetchWeather();
+    fetchWarnings();
+
+    setInterval(() => {
+      fetchWeather();
+      fetchWarnings();
+    }, 30000);
+  </script>
+</body>
+</html>
